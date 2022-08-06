@@ -339,15 +339,36 @@ mod tests {
         assert_eq!(meta.dense_coords().len(), (inner_size + 2).pow(D as u32));
     }
 
-    /*
     #[test]
     fn storage() {
+        test_storage::<1>();
+        test_storage::<2>();
+        test_storage::<3>();
+        test_storage::<4>();
+        test_storage::<5>();
+        test_storage::<6>();
+        test_storage::<7>();
     }
 
     fn test_storage<const D: usize>() {
         let inner_size = 1;
         let meta = HyperSurfaceMeta::<D>::new(inner_size, D);
-        let mut hypersurface = 
+        let mut hypersurface = HyperSurface::<D, i32>::new(meta);
+
+        let coords = meta.dense_coords();
+        for (idx, &point) in coords.iter().enumerate() {
+            hypersurface[point] = idx as i32 + 1;
+        }
+
+        for (idx, &point) in coords.iter().enumerate() {
+            assert_eq!(hypersurface[point], idx as i32 + 1);
+        }
+
+        for plane in hypersurface.planes.values() {
+            for point in plane.iter() {
+                assert!(point > &0);
+            }
+        }
+
     }
-    */
 }
