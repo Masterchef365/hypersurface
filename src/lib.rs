@@ -12,7 +12,7 @@ pub type HyperCoord<const N: usize> = [Extent; N];
 #[derive(Copy, Clone, Debug)]
 pub struct HyperSurfaceMeta {
     max_dim: usize,
-    side_len: usize,
+    inner_size: usize,
 }
 
 pub struct HyperSurface<const N: usize, T> {
@@ -28,9 +28,9 @@ impl<const N: usize, T> HyperSurface<N, T> {
         let mut planes = HashMap::new();
 
         for plane_id in meta.all_planes() {
-            let max_idx = set_hypercoord_inbound_vals(plane_id, meta.side_len);
-            let max_flat_idx = meta.index_dense(max_idx).unwrap();
-            let arr = vec![T::default(); max_flat_idx];
+            let var_dims = count_var_dims(plane_id) as u32;
+            let flat_size = meta.inner_size.pow(var_dims);
+            let arr = vec![T::default(); flat_size];
             planes.insert(plane_id, arr);
         }
 
@@ -66,8 +66,11 @@ impl<const N: usize, T> std::ops::IndexMut<HyperCoord<N>> for HyperSurface<N, T>
 }
 
 impl HyperSurfaceMeta {
-    pub fn new(side_len: usize, max_dim: usize) -> Self {
-        Self { max_dim, side_len }
+    pub fn new(inner_size: usize, max_dim: usize) -> Self {
+        Self {
+            max_dim,
+            inner_size,
+        }
     }
 
     pub fn index_dense<const N: usize>(&self, c: HyperCoord<N>) -> Option<usize> {
@@ -79,7 +82,7 @@ impl HyperSurfaceMeta {
             match p {
                 Extent::InBound(v) => {
                     index += stride * v;
-                    stride *= self.side_len;
+                    stride *= self.inner_size;
                     count += 1;
                 }
                 _ => (),
@@ -141,7 +144,7 @@ impl HyperSurfaceMeta {
     ) {
         match plane[idx] {
             Extent::InBound(_) => {
-                for pos in 1..self.side_len - 1 {
+                for pos in 0..self.inner_size {
                     plane[idx] = Extent::InBound(pos);
 
                     if let Some(lower) = idx.checked_sub(1) {
@@ -163,9 +166,9 @@ impl HyperSurfaceMeta {
 
     pub fn coord_euclid<const N: usize>(&self, coord: HyperCoord<N>) -> [usize; N] {
         coord.map(|v| match v {
-            Extent::Positive => self.side_len - 1,
+            Extent::Positive => self.inner_size + 1,
             Extent::Negative => 0,
-            Extent::InBound(v) => v,
+            Extent::InBound(v) => v + 1,
         })
     }
 
@@ -209,7 +212,7 @@ impl<const N: usize> Iterator for Neighbors<N> {
             }
 
             if let Some(neigh) =
-                extent_neighbor(self.coord[self.idx], self.sign, self.meta.side_len)
+                extent_neighbor(self.coord[self.idx], self.sign, self.meta.inner_size)
             {
                 let mut output = self.coord;
                 output[self.idx] = neigh;
@@ -228,20 +231,22 @@ impl<const N: usize> Iterator for Neighbors<N> {
 }
 
 fn count_var_dims<const N: usize>(coord: HyperCoord<N>) -> usize {
-    coord.into_iter().filter(|v| matches!(v, Extent::InBound(_))).count()
+    coord
+        .into_iter()
+        .filter(|v| matches!(v, Extent::InBound(_)))
+        .count()
 }
 
 /// Returns the neighbor extent of `e` in the direction of `sign` on the dimension with the given
-/// length `side_len`, if any.
+/// length `inner_size`, if any.
 /// Sign: True means increase, False means decrease.
-fn extent_neighbor(e: Extent, sign: bool, side_len: usize) -> Option<Extent> {
-    debug_assert!(side_len > 1);
+fn extent_neighbor(e: Extent, sign: bool, inner_size: usize) -> Option<Extent> {
     match e {
         Extent::Positive => match sign {
             true => None,
             false => {
-                if side_len > 2 {
-                    Some(Extent::InBound(side_len - 2))
+                if inner_size > 0 {
+                    Some(Extent::InBound(inner_size - 1))
                 } else {
                     Some(Extent::Negative)
                 }
@@ -249,8 +254,8 @@ fn extent_neighbor(e: Extent, sign: bool, side_len: usize) -> Option<Extent> {
         },
         Extent::Negative => match sign {
             true => {
-                if side_len > 2 {
-                    Some(Extent::InBound(1))
+                if inner_size > 0 {
+                    Some(Extent::InBound(0))
                 } else {
                     Some(Extent::Positive)
                 }
@@ -259,18 +264,18 @@ fn extent_neighbor(e: Extent, sign: bool, side_len: usize) -> Option<Extent> {
         },
         Extent::InBound(v) => match sign {
             true => {
-                if v + 1 > side_len {
+                if v + 1 > inner_size {
                     return None;
                 }
 
-                if v + 1 == side_len {
+                if v + 1 == inner_size {
                     Some(Extent::Positive)
                 } else {
                     Some(Extent::InBound(v + 1))
                 }
             }
             false => {
-                if v == 1 {
+                if v == 0 {
                     Some(Extent::Negative)
                 } else {
                     v.checked_sub(1).map(Extent::InBound)

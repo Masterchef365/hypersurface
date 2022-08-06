@@ -1,7 +1,7 @@
 use hypersurface::HyperSurfaceMeta;
 
 fn main() {
-    let meta = HyperSurfaceMeta::new(3, 2);
+    let meta = HyperSurfaceMeta::new(1, 2);
     const N_DIMS: usize = 3;
 
     let mut count = 0;
