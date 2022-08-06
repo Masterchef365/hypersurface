@@ -86,9 +86,7 @@ impl HyperSurfaceMeta {
             }
         }
 
-        (0..=self.max_dim)
-            .contains(&count)
-            .then(|| index)
+        (0..=self.max_dim).contains(&count).then(|| index)
     }
 
     pub fn all_planes<const N: usize>(&self) -> Vec<HyperCoord<N>> {
@@ -127,15 +125,15 @@ impl HyperSurfaceMeta {
         planes
     }
 
-    pub fn all_coords<const N: usize>(&self) -> Vec<HyperCoord<N>> {
+    pub fn dense_coords<const N: usize>(&self) -> Vec<HyperCoord<N>> {
         let mut output = vec![];
         for plane in self.all_planes() {
-            self.all_coords_rec(&mut output, N - 1, plane);
+            self.dense_coords_rec(&mut output, N - 1, plane);
         }
         output
     }
 
-    pub fn all_coords_rec<const N: usize>(
+    pub fn dense_coords_rec<const N: usize>(
         &self,
         out: &mut Vec<HyperCoord<N>>,
         idx: usize,
@@ -147,7 +145,7 @@ impl HyperSurfaceMeta {
                     plane[idx] = Extent::InBound(pos);
 
                     if let Some(lower) = idx.checked_sub(1) {
-                        self.all_coords_rec(out, lower, plane);
+                        self.dense_coords_rec(out, lower, plane);
                     } else {
                         out.push(plane);
                     }
@@ -155,10 +153,20 @@ impl HyperSurfaceMeta {
             }
             _ => {
                 if let Some(lower) = idx.checked_sub(1) {
-                    self.all_coords_rec(out, lower, plane);
+                    self.dense_coords_rec(out, lower, plane);
+                } else {
+                    out.push(plane);
                 }
             }
         }
+    }
+
+    pub fn coord_euclid<const N: usize>(&self, coord: HyperCoord<N>) -> [usize; N] {
+        coord.map(|v| match v {
+            Extent::Positive => self.side_len - 1,
+            Extent::Negative => 0,
+            Extent::InBound(v) => v,
+        })
     }
 }
 
