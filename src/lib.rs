@@ -1,62 +1,151 @@
-struct HyperCoord<const N: usize>(pub [isize; N]);
+use std::collections::HashMap;
 
-struct HyperSurface {
-
+#[derive(Copy, Clone, Debug, Hash, PartialEq, Eq)]
+pub enum Extent {
+    Positive,
+    Negative,
+    InBound(usize),
 }
 
-pub struct ArrayNd<const N: usize, T> {
-    data: Vec<T>,
-    dims: [usize; N],
+pub type HyperCoord<const N: usize> = [Extent; N];
+
+#[derive(Copy, Clone, Debug)]
+pub struct HyperSurfaceMeta {
+    pub min_dim: usize,
+    pub max_dim: usize,
+    pub side_len: usize,
 }
 
-impl<const N: usize, T> ArrayNd<N, T> {
-    pub fn new(dims: [usize; N]) -> Self
+pub struct HyperSurface<const N: usize, T> {
+    planes: HashMap<HyperCoord<N>, Vec<T>>,
+    meta: HyperSurfaceMeta,
+}
+
+impl<const N: usize, T> HyperSurface<N, T> {
+    pub fn new(meta: HyperSurfaceMeta) -> Self
     where
         T: Default + Clone,
     {
-        let size = dims.into_iter().product();
-        let data = vec![T::default(); size];
-        Self::from_vec(dims, data)
-    }
+        let mut planes = HashMap::new();
 
-    pub fn from_vec(dims: [usize; N], data: Vec<T>) -> Self {
-        debug_assert_eq!(data.len(), dims.into_iter().product());
-        Self { data, dims }
-    }
-
-    pub fn calc_index(&self, index: [usize; N]) -> usize {
-        let mut linear = 0;
-        let mut stride = 1;
-        for (dim, pos) in self.dims.into_iter().zip(index) {
-            linear += stride * pos;
-            stride *= dim;
+        for plane_id in meta.all_planes() {
+            let max_idx = set_hypercoord_inbound_vals(plane_id, meta.side_len);
+            let max_flat_idx = meta.index_dense(max_idx).unwrap();
+            let arr = vec![T::default(); max_flat_idx];
+            planes.insert(plane_id, arr);
         }
-        linear
+
+        Self { planes, meta }
     }
 
-    pub fn dims(&self) -> [usize; N] {
-        self.dims
-    }
-
-    pub fn data(&self) -> &[T] {
-        &self.data
-    }
-
-    pub fn data_mut(&mut self) -> &mut [T] {
-        &mut self.data
+    pub fn meta(&self) -> HyperSurfaceMeta {
+        self.meta
     }
 }
 
-impl<const N: usize, T> std::ops::Index<[usize; N]> for ArrayNd<N, T> {
+impl<const N: usize, T> std::ops::Index<HyperCoord<N>> for HyperSurface<N, T> {
     type Output = T;
-    fn index(&self, pos: [usize; N]) -> &T {
-        &self.data[self.calc_index(pos)]
+    fn index(&self, c: HyperCoord<N>) -> &T {
+        let plane = self
+            .planes
+            .get(&set_hypercoord_inbound_vals(c, 0))
+            .expect("Invalid plane");
+        let idx = self.meta.index_dense(c).expect("Out of hyperbounds index");
+        &plane[idx]
     }
 }
 
-impl<const N: usize, T> std::ops::IndexMut<[usize; N]> for ArrayNd<N, T> {
-    fn index_mut(&mut self, pos: [usize; N]) -> &mut T {
-        let idx = self.calc_index(pos);
-        &mut self.data[idx]
+impl<const N: usize, T> std::ops::IndexMut<HyperCoord<N>> for HyperSurface<N, T> {
+    fn index_mut(&mut self, c: HyperCoord<N>) -> &mut T {
+        let plane = self
+            .planes
+            .get_mut(&set_hypercoord_inbound_vals(c, 0))
+            .expect("Invalid plane");
+        let idx = self.meta.index_dense(c).expect("Out of hyperbounds index");
+        &mut plane[idx]
     }
+}
+
+impl HyperSurfaceMeta {
+    pub fn index_dense<const N: usize>(&self, c: HyperCoord<N>) -> Option<usize> {
+        let mut index = 0;
+        let mut stride = 1;
+        let mut count = 0;
+
+        for p in c {
+            match p {
+                Extent::InBound(v) => {
+                    index += stride * v;
+                    stride *= self.side_len;
+                    count += 1;
+                }
+                _ => (),
+            }
+        }
+
+        (self.min_dim..=self.max_dim)
+            .contains(&count)
+            .then(|| index)
+    }
+
+    pub fn all_planes<const N: usize>(&self) -> Vec<HyperCoord<N>> {
+        let mut planes = vec![];
+
+        // For each possible number of varying dims (e.g. n_var_dims = 2 means index over a plane
+        for n_var_dims in self.min_dim..=self.max_dim {
+            for var_dims in n_choose_m(N, n_var_dims) {
+                // For each possible plane this could be on (e.g. top or bottom of cube)
+                let n_stable_dims = N - n_var_dims;
+                for signs in 0..1u64 << n_stable_dims {
+                    let mut bit = 0;
+                    let mut sel_dim = 0;
+                    let mut plane = [Extent::InBound(0); N];
+
+                    // For each dimension in the hypercoord
+                    for i in 0..N {
+                        // If this is a variable dim, leave it as InBound(0)
+                        if i == var_dims[sel_dim] {
+                            sel_dim += 1;
+                        } else {
+                            // Otherwise, use the bits to set the sign
+                            plane[i] = match (signs >> bit) & 1 == 1 {
+                                true => Extent::Positive,
+                                false => Extent::Negative,
+                            };
+                            bit += 1;
+                        }
+                    }
+
+                    planes.push(plane);
+                }
+            }
+        }
+
+        planes
+    }
+}
+
+fn set_hypercoord_inbound_vals<const N: usize>(c: HyperCoord<N>, value: usize) -> HyperCoord<N> {
+    c.map(|p| match p {
+        Extent::InBound(_) => Extent::InBound(value),
+        _ => p,
+    })
+}
+
+/// Output with the given const size, but use the given value of m
+pub fn n_choose_m(n: usize, m: usize) -> Vec<Vec<usize>> {
+    let m_minus_one = match m.checked_sub(1) {
+        Some(mmo) => mmo,
+        None => return vec![vec![]],
+    };
+
+    let mut out = vec![];
+
+    for i in m_minus_one..n {
+        for mut sub in n_choose_m(i, m_minus_one) {
+            sub.push(i);
+            out.push(sub);
+        }
+    }
+    out
 }
