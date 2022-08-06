@@ -1,6 +1,8 @@
 struct HyperCoord<const N: usize>(pub [isize; N]);
 
-struct HyperSurface {}
+struct HyperSurface {
+
+}
 
 pub struct ArrayNd<const N: usize, T> {
     data: Vec<T>,
