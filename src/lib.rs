@@ -168,6 +168,116 @@ impl HyperSurfaceMeta {
             Extent::InBound(v) => v,
         })
     }
+
+    pub fn neighbors<const N: usize>(self, coord: HyperCoord<N>) -> Neighbors<N> {
+        Neighbors::new(self, coord)
+    }
+}
+
+pub struct Neighbors<const N: usize> {
+    meta: HyperSurfaceMeta,
+    coord: HyperCoord<N>,
+    idx: usize,
+    sign: bool,
+}
+
+impl<const N: usize> Neighbors<N> {
+    fn new(meta: HyperSurfaceMeta, coord: HyperCoord<N>) -> Self {
+        Self {
+            meta,
+            coord,
+            idx: 0,
+            sign: false,
+        }
+    }
+
+    fn advance(&mut self) {
+        if self.sign {
+            self.idx += 1;
+        }
+        self.sign = !self.sign;
+    }
+}
+
+impl<const N: usize> Iterator for Neighbors<N> {
+    type Item = HyperCoord<N>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        loop {
+            if self.idx == self.coord.len() {
+                return None;
+            }
+
+            if let Some(neigh) =
+                extent_neighbor(self.coord[self.idx], self.sign, self.meta.side_len)
+            {
+                let mut output = self.coord;
+                output[self.idx] = neigh;
+
+                self.advance();
+                if count_var_dims(output) > self.meta.max_dim {
+                    continue;
+                }
+
+                return Some(output);
+            } else {
+                self.advance();
+            }
+        }
+    }
+}
+
+fn count_var_dims<const N: usize>(coord: HyperCoord<N>) -> usize {
+    coord.into_iter().filter(|v| matches!(v, Extent::InBound(_))).count()
+}
+
+/// Returns the neighbor extent of `e` in the direction of `sign` on the dimension with the given
+/// length `side_len`, if any.
+/// Sign: True means increase, False means decrease.
+fn extent_neighbor(e: Extent, sign: bool, side_len: usize) -> Option<Extent> {
+    debug_assert!(side_len > 1);
+    match e {
+        Extent::Positive => match sign {
+            true => None,
+            false => {
+                if side_len > 2 {
+                    Some(Extent::InBound(side_len - 2))
+                } else {
+                    Some(Extent::Negative)
+                }
+            }
+        },
+        Extent::Negative => match sign {
+            true => {
+                if side_len > 2 {
+                    Some(Extent::InBound(1))
+                } else {
+                    Some(Extent::Positive)
+                }
+            }
+            false => None,
+        },
+        Extent::InBound(v) => match sign {
+            true => {
+                if v + 1 > side_len {
+                    return None;
+                }
+
+                if v + 1 == side_len {
+                    Some(Extent::Positive)
+                } else {
+                    Some(Extent::InBound(v + 1))
+                }
+            }
+            false => {
+                if v == 1 {
+                    Some(Extent::Negative)
+                } else {
+                    v.checked_sub(1).map(Extent::InBound)
+                }
+            }
+        },
+    }
 }
 
 fn set_hypercoord_inbound_vals<const N: usize>(c: HyperCoord<N>, value: usize) -> HyperCoord<N> {
