@@ -1,5 +1,7 @@
 use std::{collections::HashMap, marker::PhantomData};
 
+/// An extent along a dimension, with special cases for the maximum and minumum extents along a
+/// volume
 #[derive(Copy, Clone, Debug, Hash, PartialEq, Eq)]
 pub enum Extent {
     Positive,
@@ -7,14 +9,17 @@ pub enum Extent {
     InBound(usize),
 }
 
+/// A coordinate in euclidean space
 pub type HyperCoord<const N: usize> = [Extent; N];
 
+/// A description of a hypersurface
 #[derive(Copy, Clone, Debug)]
 pub struct HyperSurfaceMeta<const N: usize> {
     max_dim: usize,
     inner_size: usize,
 }
 
+/// Hypersurface storage
 pub struct HyperSurface<const N: usize, T> {
     planes: HashMap<HyperCoord<N>, Vec<T>>,
     meta: HyperSurfaceMeta<N>,
@@ -129,6 +134,7 @@ impl<const N: usize> HyperSurfaceMeta<N> {
     }
 
     pub fn dense_coords(&self) -> Vec<HyperCoord<N>> {
+        debug_assert!(N > 0);
         let mut output = vec![];
         for plane in self.all_planes() {
             self.dense_coords_rec(&mut output, N - 1, plane);
@@ -308,4 +314,40 @@ pub fn n_choose_m(n: usize, m: usize) -> Vec<Vec<usize>> {
         }
     }
     out
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn meta_pointcount() {
+        test_dense_pointcount::<1>();
+        test_dense_pointcount::<2>();
+        test_dense_pointcount::<3>();
+        test_dense_pointcount::<4>();
+        test_dense_pointcount::<5>();
+        test_dense_pointcount::<6>();
+        test_dense_pointcount::<7>();
+        test_dense_pointcount::<8>();
+        test_dense_pointcount::<9>();
+    }
+
+    fn test_dense_pointcount<const D: usize>() {
+        let inner_size = 1;
+        let meta = HyperSurfaceMeta::<D>::new(inner_size, D);
+        assert_eq!(meta.dense_coords().len(), (inner_size + 2).pow(D as u32));
+    }
+
+    /*
+    #[test]
+    fn storage() {
+    }
+
+    fn test_storage<const D: usize>() {
+        let inner_size = 1;
+        let meta = HyperSurfaceMeta::<D>::new(inner_size, D);
+        let mut hypersurface = 
+    }
+    */
 }

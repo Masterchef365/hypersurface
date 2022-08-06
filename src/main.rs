@@ -1,13 +1,13 @@
 use hypersurface::HyperSurfaceMeta;
 
 fn main() {
-    let meta = HyperSurfaceMeta::<3>::new(1, 3);
+    let meta = HyperSurfaceMeta::<12>::new(0, 12);
 
     let mut count = 0;
     for coord in meta.dense_coords() {
-        println!("{:?}", meta.coord_euclid(coord));
+        //println!("{:?}", meta.coord_euclid(coord));
         for neighbor in meta.neighbors(coord) {
-            println!("    {:?}", meta.coord_euclid(neighbor));
+            //println!("    {:?}", meta.coord_euclid(neighbor));
         }
         count += 1;
     }
