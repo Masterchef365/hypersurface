@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::{collections::HashMap, marker::PhantomData};
 
 #[derive(Copy, Clone, Debug, Hash, PartialEq, Eq)]
 pub enum Extent {
@@ -10,18 +10,18 @@ pub enum Extent {
 pub type HyperCoord<const N: usize> = [Extent; N];
 
 #[derive(Copy, Clone, Debug)]
-pub struct HyperSurfaceMeta {
+pub struct HyperSurfaceMeta<const N: usize> {
     max_dim: usize,
     inner_size: usize,
 }
 
 pub struct HyperSurface<const N: usize, T> {
     planes: HashMap<HyperCoord<N>, Vec<T>>,
-    meta: HyperSurfaceMeta,
+    meta: HyperSurfaceMeta<N>,
 }
 
 impl<const N: usize, T> HyperSurface<N, T> {
-    pub fn new(meta: HyperSurfaceMeta) -> Self
+    pub fn new(meta: HyperSurfaceMeta<N>) -> Self
     where
         T: Default + Clone,
     {
@@ -37,7 +37,7 @@ impl<const N: usize, T> HyperSurface<N, T> {
         Self { planes, meta }
     }
 
-    pub fn meta(&self) -> HyperSurfaceMeta {
+    pub fn meta(&self) -> HyperSurfaceMeta<N> {
         self.meta
     }
 }
@@ -65,7 +65,7 @@ impl<const N: usize, T> std::ops::IndexMut<HyperCoord<N>> for HyperSurface<N, T>
     }
 }
 
-impl HyperSurfaceMeta {
+impl<const N: usize> HyperSurfaceMeta<N> {
     pub fn new(inner_size: usize, max_dim: usize) -> Self {
         Self {
             max_dim,
@@ -73,7 +73,7 @@ impl HyperSurfaceMeta {
         }
     }
 
-    pub fn index_dense<const N: usize>(&self, c: HyperCoord<N>) -> Option<usize> {
+    pub fn index_dense(&self, c: HyperCoord<N>) -> Option<usize> {
         let mut index = 0;
         let mut stride = 1;
         let mut count = 0;
@@ -92,7 +92,7 @@ impl HyperSurfaceMeta {
         (0..=self.max_dim).contains(&count).then(|| index)
     }
 
-    pub fn all_planes<const N: usize>(&self) -> Vec<HyperCoord<N>> {
+    pub fn all_planes(&self) -> Vec<HyperCoord<N>> {
         let mut planes = vec![];
 
         // For each possible number of varying dims (e.g. n_var_dims = 2 means index over a plane
@@ -128,7 +128,7 @@ impl HyperSurfaceMeta {
         planes
     }
 
-    pub fn dense_coords<const N: usize>(&self) -> Vec<HyperCoord<N>> {
+    pub fn dense_coords(&self) -> Vec<HyperCoord<N>> {
         let mut output = vec![];
         for plane in self.all_planes() {
             self.dense_coords_rec(&mut output, N - 1, plane);
@@ -136,7 +136,7 @@ impl HyperSurfaceMeta {
         output
     }
 
-    pub fn dense_coords_rec<const N: usize>(
+    pub fn dense_coords_rec(
         &self,
         out: &mut Vec<HyperCoord<N>>,
         idx: usize,
@@ -164,7 +164,7 @@ impl HyperSurfaceMeta {
         }
     }
 
-    pub fn coord_euclid<const N: usize>(&self, coord: HyperCoord<N>) -> [usize; N] {
+    pub fn coord_euclid(&self, coord: HyperCoord<N>) -> [usize; N] {
         coord.map(|v| match v {
             Extent::Positive => self.inner_size + 1,
             Extent::Negative => 0,
@@ -172,20 +172,20 @@ impl HyperSurfaceMeta {
         })
     }
 
-    pub fn neighbors<const N: usize>(self, coord: HyperCoord<N>) -> Neighbors<N> {
+    pub fn neighbors(self, coord: HyperCoord<N>) -> Neighbors<N> {
         Neighbors::new(self, coord)
     }
 }
 
 pub struct Neighbors<const N: usize> {
-    meta: HyperSurfaceMeta,
+    meta: HyperSurfaceMeta<N>,
     coord: HyperCoord<N>,
     idx: usize,
     sign: bool,
 }
 
 impl<const N: usize> Neighbors<N> {
-    fn new(meta: HyperSurfaceMeta, coord: HyperCoord<N>) -> Self {
+    fn new(meta: HyperSurfaceMeta<N>, coord: HyperCoord<N>) -> Self {
         Self {
             meta,
             coord,

@@ -1,11 +1,10 @@
 use hypersurface::HyperSurfaceMeta;
 
 fn main() {
-    let meta = HyperSurfaceMeta::new(1, 2);
-    const N_DIMS: usize = 3;
+    let meta = HyperSurfaceMeta::<3>::new(1, 3);
 
     let mut count = 0;
-    for coord in meta.dense_coords::<N_DIMS>() {
+    for coord in meta.dense_coords() {
         println!("{:?}", meta.coord_euclid(coord));
         for neighbor in meta.neighbors(coord) {
             println!("    {:?}", meta.coord_euclid(neighbor));
@@ -13,9 +12,9 @@ fn main() {
         count += 1;
     }
 
-    /*
     dbg!(count);
 
+    /*
     for plane in meta.all_planes::<N_DIMS>() {
         println!("{:?}", plane);
     }
