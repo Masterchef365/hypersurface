@@ -183,12 +183,20 @@ impl<const N: usize> HyperSurfaceMeta<N> {
         Neighbors::new(self, coord)
     }
 
+    pub fn neighbors_adj(self, coord: HyperCoord<N>) -> NeighborsAdj<N> {
+        NeighborsAdj::new(self, coord)
+    }
+
     pub fn side_len(&self) -> usize {
         self.inner_size + 2
     }
 
     pub fn dims(&self) -> usize {
         N
+    }
+
+    pub fn max_dim(&self) -> usize {
+        self.max_dim
     }
 }
 
@@ -378,13 +386,12 @@ mod tests {
                 assert!(point > &0);
             }
         }
-
     }
 }
 
 pub struct NeighborAccel {
     neighbors: Vec<usize>,
-    ranges: Vec<(usize, usize, usize)>,
+    ranges: Vec<(usize, usize)>,
     len: usize,
 }
 
@@ -392,8 +399,6 @@ impl NeighborAccel {
     pub fn new<const N: usize>(meta: HyperSurfaceMeta<N>) -> Self {
         // Mapping from plane to range (allocates space)
         let mut planes = HashMap::default();
-        let mut ranges = vec![];
-        let mut total = 0;
         let mut len = 0;
 
         for plane_id in meta.all_planes() {
@@ -402,24 +407,27 @@ impl NeighborAccel {
 
             planes.insert(plane_id, len);
             len += flat_size;
-
-                let begin = total;
-                let neigh_count = meta.neighbors(plane_id).count();
-                let count = flat_size * neigh_count;
-                total += count;
-                let end = total;
-
-                ranges.push((begin, end, neigh_count));
         }
 
-        let mut neighbors = Vec::with_capacity(total);
+        let mut neighbors = vec![];
+        let mut ranges = vec![];
 
         for coord in meta.all_coords() {
-            for neigh in meta.neighbors(coord) {
+            let begin = neighbors.len();
+            let mut count = 0;
+
+            for neigh in meta.neighbors_adj(coord) {
+                if count_var_dims(neigh) > meta.max_dim {
+                    continue;
+                }
+
                 let begin = planes.get(&set_hypercoord_inbound_vals(neigh, 0)).unwrap();
                 let idx = meta.index_dense(neigh).unwrap() + *begin;
-                neighbors.push(idx); 
+                neighbors.push(idx);
+                count += 1;
             }
+
+            ranges.push((begin, count));
         }
 
         Self {
@@ -434,14 +442,66 @@ impl NeighborAccel {
     }
 
     pub fn neighbors<F: FnMut(usize, &[usize])>(&self, mut f: F) {
-        let mut idx = 0;
-        for &(begin, end, stride) in self.ranges.iter() {
-            let slice = &self.neighbors[begin..end];
+        for (idx, &(begin, count)) in self.ranges.iter().enumerate() {
+            let neigh = &self.neighbors[begin..][..count];
 
-            for neigh in slice.chunks_exact(stride) {
-                f(idx, neigh);
-                idx += 1;
+            f(idx, neigh);
+        }
+    }
+}
+
+pub struct NeighborsAdj<const N: usize> {
+    meta: HyperSurfaceMeta<N>,
+    coord: HyperCoord<N>,
+    counter: usize,
+    counter_max: usize,
+}
+
+impl<const N: usize> NeighborsAdj<N> {
+    fn new(meta: HyperSurfaceMeta<N>, coord: HyperCoord<N>) -> Self {
+        Self {
+            meta,
+            coord,
+            counter: 1,
+            counter_max: 3_usize.pow(coord.len() as u32),
+        }
+    }
+
+    fn advance(&mut self) {
+        self.counter += 1;
+    }
+}
+
+impl<const N: usize> Iterator for NeighborsAdj<N> {
+    type Item = HyperCoord<N>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        'outer: loop {
+            if self.counter == self.counter_max {
+                return None;
             }
+
+            let mut coord = self.coord;
+            let mut counter = self.counter;
+            for i in 0..N {
+                let candidate = match counter % 3 {
+                    0 => Some(self.coord[i]),
+                    1 => extent_neighbor(self.coord[i], false, self.meta.inner_size),
+                    _ => extent_neighbor(self.coord[i], true, self.meta.inner_size),
+                };
+
+                if let Some(c) = candidate {
+                    coord[i] = c;
+                } else {
+                    self.advance();
+                    continue 'outer;
+                }
+
+                counter /= 3;
+            }
+
+            self.advance();
+            return Some(coord);
         }
     }
 }

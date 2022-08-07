@@ -1,4 +1,4 @@
-use hypersurface::{Extent, HyperCoord, HyperSurface, HyperSurfaceMeta, NeighborAccel};
+use hypersurface::{HyperSurfaceMeta, NeighborAccel};
 use idek::{prelude::*, IndexBuffer, MultiPlatformCamera};
 
 fn main() -> Result<()> {
@@ -12,21 +12,28 @@ struct TriangleApp {
 
     camera: MultiPlatformCamera,
 
+    voot: usize,
     sim: Simulation<4>,
     meta: HyperSurfaceMeta<4>,
 }
 
 impl App for TriangleApp {
     fn init(ctx: &mut Context, platform: &mut Platform, _: ()) -> Result<Self> {
-        let meta = HyperSurfaceMeta::new(150, 2);
+        let meta = HyperSurfaceMeta::new(20, 2);
         let mut sim = Simulation::new(meta);
 
-        sim.data_mut()[0] = 100.;
+        let l = sim.data().len();
+        let k = 900;
+        for i in l - k..l {
+            let rand = (i as f32 / l as f32).cos().to_be_bytes()[3] & 1 == 0;
+            sim.data_mut()[i] = rand;
+        }
 
         let vertices = draw_surface4(meta, sim.data());
         let indices = linear_indices(&vertices);
 
         Ok(Self {
+            voot: 0,
             meta,
             sim,
             verts: ctx.vertices(&vertices, true)?,
@@ -41,10 +48,15 @@ impl App for TriangleApp {
     }
 
     fn frame(&mut self, ctx: &mut Context, _: &mut Platform) -> Result<Vec<DrawCmd>> {
-        let vertices = draw_surface4(self.meta, self.sim.data());
-        ctx.update_vertices(self.verts, &vertices)?;
+        if self.voot % 9 == 0 {
+            self.sim.step();
 
-        self.sim.step(1e-1);
+            let vertices = draw_surface4(self.meta, self.sim.data());
+            ctx.update_vertices(self.verts, &vertices)?;
+            self.voot = 0;
+        }
+
+        self.voot += 1;
 
         Ok(vec![DrawCmd::new(self.verts)
             .indices(self.indices)
@@ -67,9 +79,8 @@ impl App for TriangleApp {
 
 struct Simulation<const N: usize> {
     accel: NeighborAccel,
-    write: Vec<f32>,
-    read: Vec<f32>,
-    prev: Vec<f32>,
+    write: Vec<bool>,
+    read: Vec<bool>,
     first: bool,
 }
 
@@ -77,54 +88,47 @@ impl<const N: usize> Simulation<N> {
     pub fn new(meta: HyperSurfaceMeta<N>) -> Self {
         let accel = NeighborAccel::new(meta);
         Self {
-            write: vec![0.; accel.len()],
-            read: vec![0.; accel.len()],
-            prev: vec![0.; accel.len()],
+            write: vec![false; accel.len()],
+            read: vec![false; accel.len()],
             accel,
             first: true,
         }
     }
 
-    pub fn data_mut(&mut self) -> &mut [f32] {
+    pub fn data_mut(&mut self) -> &mut [bool] {
         &mut self.read
     }
 
-    pub fn data(&mut self) -> &[f32] {
+    pub fn data(&mut self) -> &[bool] {
         &self.read
     }
 
-    pub fn step(&mut self, dt: f32) {
+    pub fn step(&mut self) {
         self.accel.neighbors(|coord, neighbors| {
-            let prev = self.prev[coord];
             let center = self.read[coord];
-            let sum: f32 = neighbors.iter().map(|&c| self.read[c]).sum();
+            let sum: u8 = neighbors.iter().map(|&c| self.read[c] as u8).sum();
 
-            let cfd = sum - neighbors.len() as f32 * center;
-            let cfd = 0.5 * dt * cfd;
-
-            self.write[coord] = if self.first {
-                center - cfd
-            } else {
-                -prev + 2. * center + cfd
+            self.write[coord] = match center {
+                true => matches!(sum, 2 | 3),
+                false => sum == 3,
             };
         });
 
         self.first = false;
 
-        std::mem::swap(&mut self.read, &mut self.prev);
         std::mem::swap(&mut self.read, &mut self.write);
     }
 }
 
-fn color_fn(v: f32) -> [f32; 3] {
-    if v > 0. {
-        [v, v * 0.2, v * 0.01]
+fn color_fn(v: bool) -> [f32; 3] {
+    if v {
+        [1.; 3]
     } else {
-        [-v * 0.01, -v * 0.2, -v]
+        [0.01; 3]
     }
 }
 
-fn draw_surface4(meta: HyperSurfaceMeta<4>, data: &[f32]) -> Vec<Vertex> {
+fn draw_surface4(meta: HyperSurfaceMeta<4>, data: &[bool]) -> Vec<Vertex> {
     let side_len = meta.side_len() as f32;
 
     meta.all_coords()
