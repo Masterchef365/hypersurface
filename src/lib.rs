@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use zwohash::HashMap;
 
 /// An extent along a dimension, with special cases for the maximum and minumum extents along a
 /// volume
@@ -31,7 +31,7 @@ impl<const N: usize, T> HyperSurface<N, T> {
     where
         T: Default + Clone,
     {
-        let mut planes = HashMap::new();
+        let mut planes = HashMap::default();
 
         for plane_id in meta.all_planes() {
             let var_dims = count_var_dims(plane_id) as u32;

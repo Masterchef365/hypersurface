@@ -1,4 +1,4 @@
-use hypersurface::{Extent, HyperSurface, HyperSurfaceMeta};
+use hypersurface::{Extent, HyperSurface, HyperSurfaceMeta, HyperCoord};
 use idek::{prelude::*, IndexBuffer, MultiPlatformCamera};
 
 fn main() -> Result<()> {
@@ -17,8 +17,13 @@ struct TriangleApp {
 
 impl App for TriangleApp {
     fn init(ctx: &mut Context, platform: &mut Platform, _: ()) -> Result<Self> {
-        let mut sim = Simulation::new(20);
-        sim.data_mut()[[Extent::InBound(5); 3]] = 100.;
+        let mut sim = Simulation::new(200);
+        let point = [
+            Extent::InBound(5),
+            Extent::InBound(5),
+            Extent::Positive,
+        ];
+        sim.data_mut()[point] = 100.;
 
         let vertices = draw_surface(sim.data());
         let indices = linear_indices(&vertices);
@@ -28,7 +33,7 @@ impl App for TriangleApp {
             verts: ctx.vertices(&vertices, true)?,
             indices: ctx.indices(&indices, false)?,
             shader: ctx.shader(
-                DEFAULT_VERTEX_SHADER,
+                include_bytes!("shaders/unlit.vert.spv"),
                 DEFAULT_FRAGMENT_SHADER,
                 Primitive::Points,
             )?,
@@ -40,7 +45,7 @@ impl App for TriangleApp {
         let vertices = draw_surface(self.sim.data());
         ctx.update_vertices(self.verts, &vertices)?;
 
-        self.sim.step(1e-3);
+        self.sim.step(1e-1);
 
         Ok(vec![DrawCmd::new(self.verts)
             .indices(self.indices)
@@ -65,13 +70,16 @@ struct Simulation<const N: usize> {
     write: HyperSurface<N, f32>,
     read: HyperSurface<N, f32>,
     prev: HyperSurface<N, f32>,
+    coords: Vec<HyperCoord<N>>,
     first: bool,
 }
 
 impl<const N: usize> Simulation<N> {
     pub fn new(inner_size: usize) -> Self {
-        let meta = HyperSurfaceMeta::new(inner_size, 3);
+        let meta = HyperSurfaceMeta::new(inner_size, 2);
+        let coords = meta.all_points();
         Self {
+            coords,
             write: HyperSurface::new(meta),
             read: HyperSurface::new(meta),
             prev: HyperSurface::new(meta),
@@ -91,7 +99,7 @@ impl<const N: usize> Simulation<N> {
         let mut neighbors = vec![];
         let meta = self.write.meta();
 
-        for coord in meta.all_points() {
+        for &coord in self.coords.iter() {
             neighbors.clear();
             neighbors.extend(meta.neighbors(coord));
 
