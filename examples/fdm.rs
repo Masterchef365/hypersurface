@@ -1,5 +1,4 @@
-type HyperSurface = hypersurface::HyperSurface<3, f32>;
-use hypersurface::{Extent, HyperSurfaceMeta};
+use hypersurface::{Extent, HyperSurface, HyperSurfaceMeta};
 use idek::{prelude::*, IndexBuffer, MultiPlatformCamera};
 
 fn main() -> Result<()> {
@@ -13,7 +12,7 @@ struct TriangleApp {
 
     camera: MultiPlatformCamera,
 
-    sim: Simulation,
+    sim: Simulation<3>,
 }
 
 impl App for TriangleApp {
@@ -41,7 +40,7 @@ impl App for TriangleApp {
         let vertices = draw_surface(self.sim.data());
         ctx.update_vertices(self.verts, &vertices)?;
 
-        self.sim.step(0.01);
+        self.sim.step(1e-3);
 
         Ok(vec![DrawCmd::new(self.verts)
             .indices(self.indices)
@@ -62,16 +61,16 @@ impl App for TriangleApp {
     }
 }
 
-struct Simulation {
-    write: HyperSurface,
-    read: HyperSurface,
-    prev: HyperSurface,
+struct Simulation<const N: usize> {
+    write: HyperSurface<N, f32>,
+    read: HyperSurface<N, f32>,
+    prev: HyperSurface<N, f32>,
     first: bool,
 }
 
-impl Simulation {
+impl<const N: usize> Simulation<N> {
     pub fn new(inner_size: usize) -> Self {
-        let meta = HyperSurfaceMeta::<3>::new(inner_size, 3);
+        let meta = HyperSurfaceMeta::new(inner_size, 3);
         Self {
             write: HyperSurface::new(meta),
             read: HyperSurface::new(meta),
@@ -80,11 +79,11 @@ impl Simulation {
         }
     }
 
-    pub fn data_mut(&mut self) -> &mut HyperSurface {
+    pub fn data_mut(&mut self) -> &mut HyperSurface<N, f32> {
         &mut self.read
     }
 
-    pub fn data(&mut self) -> &HyperSurface {
+    pub fn data(&mut self) -> &HyperSurface<N, f32> {
         &self.read
     }
 
@@ -117,7 +116,15 @@ impl Simulation {
     }
 }
 
-fn draw_surface(surface: &HyperSurface) -> Vec<Vertex> {
+fn color_fn(v: f32) -> [f32; 3] {
+    if v > 0. {
+        [v, v * 0.2, v * 0.01]
+    } else {
+        [-v * 0.01, -v * 0.2, -v]
+    }
+}
+
+fn draw_surface(surface: &HyperSurface<3, f32>) -> Vec<Vertex> {
     let side_len = surface.meta().side_len() as f32;
 
     let coord_to_vert = |coord| {
@@ -128,7 +135,7 @@ fn draw_surface(surface: &HyperSurface) -> Vec<Vertex> {
             .map(|v| v * 2. - 1.);
 
         let val = surface[coord];
-        Vertex::new(point, [val; 3])
+        Vertex::new(point, color_fn(val))
     };
 
     surface
