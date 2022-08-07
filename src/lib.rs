@@ -1,4 +1,4 @@
-use std::{collections::HashMap, marker::PhantomData};
+use std::collections::HashMap;
 
 /// An extent along a dimension, with special cases for the maximum and minumum extents along a
 /// volume
@@ -20,6 +20,7 @@ pub struct HyperSurfaceMeta<const N: usize> {
 }
 
 /// Hypersurface storage
+#[derive(Clone)]
 pub struct HyperSurface<const N: usize, T> {
     planes: HashMap<HyperCoord<N>, Vec<T>>,
     meta: HyperSurfaceMeta<N>,
@@ -133,7 +134,7 @@ impl<const N: usize> HyperSurfaceMeta<N> {
         planes
     }
 
-    pub fn dense_coords(&self) -> Vec<HyperCoord<N>> {
+    pub fn all_points(&self) -> Vec<HyperCoord<N>> {
         debug_assert!(N > 0);
         let mut output = vec![];
         for plane in self.all_planes() {
@@ -180,6 +181,10 @@ impl<const N: usize> HyperSurfaceMeta<N> {
 
     pub fn neighbors(self, coord: HyperCoord<N>) -> Neighbors<N> {
         Neighbors::new(self, coord)
+    }
+
+    pub fn side_len(&self) -> usize {
+        self.inner_size + 2
     }
 }
 
@@ -336,7 +341,7 @@ mod tests {
     fn test_dense_pointcount<const D: usize>() {
         let inner_size = 1;
         let meta = HyperSurfaceMeta::<D>::new(inner_size, D);
-        assert_eq!(meta.dense_coords().len(), (inner_size + 2).pow(D as u32));
+        assert_eq!(meta.all_points().len(), (inner_size + 2).pow(D as u32));
     }
 
     #[test]
@@ -355,7 +360,7 @@ mod tests {
         let meta = HyperSurfaceMeta::<D>::new(inner_size, D);
         let mut hypersurface = HyperSurface::<D, i32>::new(meta);
 
-        let coords = meta.dense_coords();
+        let coords = meta.all_points();
         for (idx, &point) in coords.iter().enumerate() {
             hypersurface[point] = idx as i32 + 1;
         }
