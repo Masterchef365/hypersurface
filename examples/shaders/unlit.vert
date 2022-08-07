@@ -29,6 +29,9 @@ void main() {
         * model_mats[model_index]
         * vec4(vert_pos, 1.0);
     gl_PointSize = 3.;
+    if (max(max(vert_color.x, vert_color.y), vert_color.z) < 0.1) {
+        gl_Position = vec4(99999999., vec3(0));
+    }
     frag_color = vert_color;
 }
 

@@ -19,7 +19,7 @@ struct TriangleApp {
 
 impl App for TriangleApp {
     fn init(ctx: &mut Context, platform: &mut Platform, _: ()) -> Result<Self> {
-        let meta = HyperSurfaceMeta::new(10, 3);
+        let meta = HyperSurfaceMeta::new(30, 3);
         let mut sim = Simulation::new(meta);
 
         let mut rng = Rng::new();
@@ -61,11 +61,11 @@ impl App for TriangleApp {
 
         if self.voot % 10 == 0 {
             self.sim.step();
-
-            let vertices = draw_surface4(self.meta, self.sim.data(), matrix);
-            ctx.update_vertices(self.verts, &vertices)?;
             self.voot = 0;
         }
+
+        let vertices = draw_surface4(self.meta, self.sim.data(), matrix);
+        ctx.update_vertices(self.verts, &vertices)?;
 
         self.voot += 1;
 
@@ -120,7 +120,7 @@ impl<const N: usize> Simulation<N> {
             let sum: u8 = neighbors.iter().map(|&c| self.read[c] as u8).sum();
 
             self.write[coord] = match center {
-                true => matches!(sum, 4 | 5),
+                true => matches!(sum, 5 | 6),
                 false => sum == 5,
             };
         });
