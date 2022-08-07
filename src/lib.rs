@@ -186,6 +186,10 @@ impl<const N: usize> HyperSurfaceMeta<N> {
     pub fn side_len(&self) -> usize {
         self.inner_size + 2
     }
+
+    pub fn dims(&self) -> usize {
+        N
+    }
 }
 
 pub struct Neighbors<const N: usize> {
