@@ -19,7 +19,7 @@ struct TriangleApp {
 
 impl App for TriangleApp {
     fn init(ctx: &mut Context, platform: &mut Platform, _: ()) -> Result<Self> {
-        let meta = HyperSurfaceMeta::new(100, 1);
+        let meta = HyperSurfaceMeta::new(100, 2);
         let mut sim = Simulation::new(meta);
 
         let mut rng = Rng::new();
@@ -48,7 +48,7 @@ impl App for TriangleApp {
     }
 
     fn frame(&mut self, ctx: &mut Context, _: &mut Platform) -> Result<Vec<DrawCmd>> {
-        let a = ctx.start_time().elapsed().as_secs_f32();
+        let a = ctx.start_time().elapsed().as_secs_f32() / 10.;
 
         //let matrix = Matrix4::new_rotation(Vector3::new(a, 0., 0.));
 
@@ -131,9 +131,13 @@ impl<const N: usize> Simulation<N> {
     }
 }
 
-fn color_fn(v: bool) -> [f32; 3] {
+fn color_fn(v: bool, c: [f32; 4]) -> [f32; 3] {
     if v {
-        [1.; 3]
+        [
+            c[0] - c[3],
+            c[1] + c[3],
+            c[2] - c[3],
+        ]
     } else {
         [0.01; 3]
     }
@@ -162,7 +166,7 @@ fn draw_surface4(meta: HyperSurfaceMeta<4>, data: &[bool], matrix: Matrix4<f32>)
                 vect.z * q,
             ];
 
-            Vertex::new(pos, color_fn(*val))
+            Vertex::new(pos, color_fn(*val, point))
         })
         .collect()
 }
