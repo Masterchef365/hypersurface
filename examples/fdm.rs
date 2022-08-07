@@ -1,5 +1,5 @@
 use hypersurface::{HyperSurfaceMeta, NeighborAccel};
-use idek::{prelude::*, IndexBuffer, MultiPlatformCamera};
+use idek::{nalgebra::{Matrix4, Vector4, Vector3}, prelude::*, IndexBuffer, MultiPlatformCamera};
 
 fn main() -> Result<()> {
     launch::<_, TriangleApp>(Settings::default().vr_if_any_args())
@@ -19,17 +19,17 @@ struct TriangleApp {
 
 impl App for TriangleApp {
     fn init(ctx: &mut Context, platform: &mut Platform, _: ()) -> Result<Self> {
-        let meta = HyperSurfaceMeta::new(20, 2);
+        let meta = HyperSurfaceMeta::new(100, 1);
         let mut sim = Simulation::new(meta);
 
-        let l = sim.data().len();
-        let k = 900;
-        for i in l - k..l {
-            let rand = (i as f32 / l as f32).cos().to_be_bytes()[3] & 1 == 0;
+        let mut rng = Rng::new();
+        //let k = 3999;//meta.side_len().pow(meta.max_dim() as u32);
+        for i in 0..sim.data().len() {
+            let rand = rng.gen() & 1 == 0;
             sim.data_mut()[i] = rand;
         }
 
-        let vertices = draw_surface4(meta, sim.data());
+        let vertices = draw_surface4(meta, sim.data(), Matrix4::identity());
         let indices = linear_indices(&vertices);
 
         Ok(Self {
@@ -48,10 +48,21 @@ impl App for TriangleApp {
     }
 
     fn frame(&mut self, ctx: &mut Context, _: &mut Platform) -> Result<Vec<DrawCmd>> {
-        if self.voot % 9 == 0 {
+        let a = ctx.start_time().elapsed().as_secs_f32();
+
+        //let matrix = Matrix4::new_rotation(Vector3::new(a, 0., 0.));
+
+        let matrix = Matrix4::from_column_slice(&[
+            a.cos(), 0., 0., a.sin(), 
+            0., 1., 0., 0.,
+            0., 0., 1., 0.,
+            -a.sin(), 0., 0., a.cos(), 
+        ]);
+
+        if self.voot % 1 == 0 {
             self.sim.step();
 
-            let vertices = draw_surface4(self.meta, self.sim.data());
+            let vertices = draw_surface4(self.meta, self.sim.data(), matrix);
             ctx.update_vertices(self.verts, &vertices)?;
             self.voot = 0;
         }
@@ -128,7 +139,7 @@ fn color_fn(v: bool) -> [f32; 3] {
     }
 }
 
-fn draw_surface4(meta: HyperSurfaceMeta<4>, data: &[bool]) -> Vec<Vertex> {
+fn draw_surface4(meta: HyperSurfaceMeta<4>, data: &[bool], matrix: Matrix4<f32>) -> Vec<Vertex> {
     let side_len = meta.side_len() as f32;
 
     meta.all_coords()
@@ -137,12 +148,19 @@ fn draw_surface4(meta: HyperSurfaceMeta<4>, data: &[bool]) -> Vec<Vertex> {
         .map(|(coord, val)| {
             let point = meta
                 .coord_euclid(coord)
-                .map(|v| v as f32 / side_len)
-                .map(|v| v * 2. - 1.);
+                .map(|v| v as f32 / side_len);
 
-            let q = point[3] + 2.;
+            let vect = Vector4::from(point);
+            let vect = vect * 2. - Vector4::from([1.; 4]);
 
-            let pos = [point[0] * q, point[1] * q, point[2] * q];
+            let vect = matrix * vect;
+
+            let q = vect.w + 2.;
+            let pos = [
+                vect.x * q,
+                vect.y * q,
+                vect.z * q,
+            ];
 
             Vertex::new(pos, color_fn(*val))
         })
@@ -175,4 +193,46 @@ fn draw_surface3(surface: &HyperSurface<3, f32>) -> Vec<Vertex> {
 
 fn linear_indices(v: &[Vertex]) -> Vec<u32> {
     (0..v.len() as u32).collect()
+}
+
+/// https://en.wikipedia.org/wiki/Permuted_congruential_generator
+pub struct Rng {
+    state: u64,
+    multiplier: u64,
+    increment: u64,
+}
+
+impl Rng {
+    pub fn new() -> Self {
+        Self::from_seed(
+            5573589319906701683,
+            6364136223846793005,
+            1442695040888963407,
+        )
+    }
+
+    pub fn from_seed(seed: u64, multiplier: u64, increment: u64) -> Self {
+        Self {
+            state: seed + increment,
+            multiplier,
+            increment,
+        }
+    }
+
+    fn u64_to_u32(x: u64) -> u32 {
+        let bytes = x.to_le_bytes();
+        u32::from_le_bytes([bytes[0], bytes[1], bytes[2], bytes[2]])
+    }
+
+    fn rotr32(x: u32, r: u32) -> u32 {
+        x >> r | x << (r.wrapping_neg() & 31)
+    }
+
+    pub fn gen(&mut self) -> u32 {
+        let mut x = self.state;
+        let count = x >> 59;
+        self.state = x.wrapping_mul(self.multiplier).wrapping_add(self.increment);
+        x ^= x >> 18;
+        Self::rotr32(Self::u64_to_u32(x >> 27), Self::u64_to_u32(count))
+    }
 }
