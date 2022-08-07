@@ -1,4 +1,4 @@
-use hypersurface::{Extent, HyperSurface, HyperSurfaceMeta, HyperCoord};
+use hypersurface::{Extent, HyperCoord, HyperSurface, HyperSurfaceMeta, NeighborAccel};
 use idek::{prelude::*, IndexBuffer, MultiPlatformCamera};
 
 fn main() -> Result<()> {
@@ -13,26 +13,21 @@ struct TriangleApp {
     camera: MultiPlatformCamera,
 
     sim: Simulation<4>,
+    meta: HyperSurfaceMeta<4>,
 }
 
 impl App for TriangleApp {
     fn init(ctx: &mut Context, platform: &mut Platform, _: ()) -> Result<Self> {
-        let meta = HyperSurfaceMeta::new(40, 2);
+        let meta = HyperSurfaceMeta::new(150, 2);
         let mut sim = Simulation::new(meta);
 
-        let point = [
-            Extent::InBound(5),
-            Extent::InBound(5),
-            Extent::Positive,
-            Extent::Positive,
-        ];
+        sim.data_mut()[0] = 100.;
 
-        sim.data_mut()[point] = meta.side_len() as f32 * meta.dims() as f32;
-
-        let vertices = draw_surface4(sim.data());
+        let vertices = draw_surface4(meta, sim.data());
         let indices = linear_indices(&vertices);
 
         Ok(Self {
+            meta,
             sim,
             verts: ctx.vertices(&vertices, true)?,
             indices: ctx.indices(&indices, false)?,
@@ -46,10 +41,10 @@ impl App for TriangleApp {
     }
 
     fn frame(&mut self, ctx: &mut Context, _: &mut Platform) -> Result<Vec<DrawCmd>> {
-        let vertices = draw_surface4(self.sim.data());
+        let vertices = draw_surface4(self.meta, self.sim.data());
         ctx.update_vertices(self.verts, &vertices)?;
 
-        self.sim.step(1e-3);
+        self.sim.step(1e-1);
 
         Ok(vec![DrawCmd::new(self.verts)
             .indices(self.indices)
@@ -71,41 +66,35 @@ impl App for TriangleApp {
 }
 
 struct Simulation<const N: usize> {
-    write: HyperSurface<N, f32>,
-    read: HyperSurface<N, f32>,
-    prev: HyperSurface<N, f32>,
-    coords: Vec<HyperCoord<N>>,
+    accel: NeighborAccel,
+    write: Vec<f32>,
+    read: Vec<f32>,
+    prev: Vec<f32>,
     first: bool,
 }
 
 impl<const N: usize> Simulation<N> {
     pub fn new(meta: HyperSurfaceMeta<N>) -> Self {
-        let coords = meta.all_points();
+        let accel = NeighborAccel::new(meta);
         Self {
-            coords,
-            write: HyperSurface::new(meta),
-            read: HyperSurface::new(meta),
-            prev: HyperSurface::new(meta),
+            write: vec![0.; accel.len()],
+            read: vec![0.; accel.len()],
+            prev: vec![0.; accel.len()],
+            accel,
             first: true,
         }
     }
 
-    pub fn data_mut(&mut self) -> &mut HyperSurface<N, f32> {
+    pub fn data_mut(&mut self) -> &mut [f32] {
         &mut self.read
     }
 
-    pub fn data(&mut self) -> &HyperSurface<N, f32> {
+    pub fn data(&mut self) -> &[f32] {
         &self.read
     }
 
     pub fn step(&mut self, dt: f32) {
-        let mut neighbors = vec![];
-        let meta = self.write.meta();
-
-        for &coord in self.coords.iter() {
-            neighbors.clear();
-            neighbors.extend(meta.neighbors(coord));
-
+        self.accel.neighbors(|coord, neighbors| {
             let prev = self.prev[coord];
             let center = self.read[coord];
             let sum: f32 = neighbors.iter().map(|&c| self.read[c]).sum();
@@ -118,7 +107,7 @@ impl<const N: usize> Simulation<N> {
             } else {
                 -prev + 2. * center + cfd
             };
-        }
+        });
 
         self.first = false;
 
@@ -135,37 +124,28 @@ fn color_fn(v: f32) -> [f32; 3] {
     }
 }
 
-fn draw_surface4(surface: &HyperSurface<4, f32>) -> Vec<Vertex> {
-    let side_len = surface.meta().side_len() as f32;
+fn draw_surface4(meta: HyperSurfaceMeta<4>, data: &[f32]) -> Vec<Vertex> {
+    let side_len = meta.side_len() as f32;
 
-    let coord_to_vert = |coord| {
-        let point = surface
-            .meta()
-            .coord_euclid(coord)
-            .map(|v| v as f32 / side_len)
-            .map(|v| v * 2. - 1.);
-
-        let q = point[3] + 2.;
-
-        let pos = [
-            point[0] * q,
-            point[1] * q,
-            point[2] * q,
-        ];
-
-        let val = surface[coord];
-        Vertex::new(pos, color_fn(val))
-    };
-
-    surface
-        .meta()
-        .all_points()
+    meta.all_coords()
         .into_iter()
-        .map(coord_to_vert)
+        .zip(data)
+        .map(|(coord, val)| {
+            let point = meta
+                .coord_euclid(coord)
+                .map(|v| v as f32 / side_len)
+                .map(|v| v * 2. - 1.);
+
+            let q = point[3] + 2.;
+
+            let pos = [point[0] * q, point[1] * q, point[2] * q];
+
+            Vertex::new(pos, color_fn(*val))
+        })
         .collect()
 }
 
-
+/*
 fn draw_surface3(surface: &HyperSurface<3, f32>) -> Vec<Vertex> {
     let side_len = surface.meta().side_len() as f32;
 
@@ -182,11 +162,12 @@ fn draw_surface3(surface: &HyperSurface<3, f32>) -> Vec<Vertex> {
 
     surface
         .meta()
-        .all_points()
+        .all_coords()
         .into_iter()
         .map(coord_to_vert)
         .collect()
 }
+*/
 
 fn linear_indices(v: &[Vertex]) -> Vec<u32> {
     (0..v.len() as u32).collect()

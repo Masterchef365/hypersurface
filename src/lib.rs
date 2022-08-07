@@ -134,7 +134,7 @@ impl<const N: usize> HyperSurfaceMeta<N> {
         planes
     }
 
-    pub fn all_points(&self) -> Vec<HyperCoord<N>> {
+    pub fn all_coords(&self) -> Vec<HyperCoord<N>> {
         debug_assert!(N > 0);
         let mut output = vec![];
         for plane in self.all_planes() {
@@ -345,7 +345,7 @@ mod tests {
     fn test_dense_pointcount<const D: usize>() {
         let inner_size = 1;
         let meta = HyperSurfaceMeta::<D>::new(inner_size, D);
-        assert_eq!(meta.all_points().len(), (inner_size + 2).pow(D as u32));
+        assert_eq!(meta.all_coords().len(), (inner_size + 2).pow(D as u32));
     }
 
     #[test]
@@ -364,7 +364,7 @@ mod tests {
         let meta = HyperSurfaceMeta::<D>::new(inner_size, D);
         let mut hypersurface = HyperSurface::<D, i32>::new(meta);
 
-        let coords = meta.all_points();
+        let coords = meta.all_coords();
         for (idx, &point) in coords.iter().enumerate() {
             hypersurface[point] = idx as i32 + 1;
         }
@@ -379,5 +379,69 @@ mod tests {
             }
         }
 
+    }
+}
+
+pub struct NeighborAccel {
+    neighbors: Vec<usize>,
+    ranges: Vec<(usize, usize, usize)>,
+    len: usize,
+}
+
+impl NeighborAccel {
+    pub fn new<const N: usize>(meta: HyperSurfaceMeta<N>) -> Self {
+        // Mapping from plane to range (allocates space)
+        let mut planes = HashMap::default();
+        let mut ranges = vec![];
+        let mut total = 0;
+        let mut len = 0;
+
+        for plane_id in meta.all_planes() {
+            let var_dims = count_var_dims(plane_id) as u32;
+            let flat_size = meta.inner_size.pow(var_dims);
+
+            planes.insert(plane_id, len);
+            len += flat_size;
+
+                let begin = total;
+                let neigh_count = meta.neighbors(plane_id).count();
+                let count = flat_size * neigh_count;
+                total += count;
+                let end = total;
+
+                ranges.push((begin, end, neigh_count));
+        }
+
+        let mut neighbors = Vec::with_capacity(total);
+
+        for coord in meta.all_coords() {
+            for neigh in meta.neighbors(coord) {
+                let begin = planes.get(&set_hypercoord_inbound_vals(neigh, 0)).unwrap();
+                let idx = meta.index_dense(neigh).unwrap() + *begin;
+                neighbors.push(idx); 
+            }
+        }
+
+        Self {
+            neighbors,
+            ranges,
+            len,
+        }
+    }
+
+    pub fn len(&self) -> usize {
+        self.len
+    }
+
+    pub fn neighbors<F: FnMut(usize, &[usize])>(&self, mut f: F) {
+        let mut idx = 0;
+        for &(begin, end, stride) in self.ranges.iter() {
+            let slice = &self.neighbors[begin..end];
+
+            for neigh in slice.chunks_exact(stride) {
+                f(idx, neigh);
+                idx += 1;
+            }
+        }
     }
 }
