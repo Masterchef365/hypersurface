@@ -19,24 +19,31 @@ struct TriangleApp {
     voot: usize,
     sim: Simulation<4>,
     meta: HyperSurfaceMeta<4>,
+
+    rng: Rng,
+}
+
+fn random_data<const N: usize>(sim: &mut Simulation<N>, rng: &mut Rng) {
+    for i in 0..sim.data().len() {
+        let rand = rng.gen() < u32::MAX / 82;
+        sim.data_mut()[i] = rand;
+    }
 }
 
 impl App for TriangleApp {
     fn init(ctx: &mut Context, platform: &mut Platform, _: ()) -> Result<Self> {
-        let meta = HyperSurfaceMeta::new(100, 2);
+        let meta = HyperSurfaceMeta::new(20, 4);
         let mut sim = Simulation::new(meta);
 
         let mut rng = Rng::new();
+        random_data(&mut sim, &mut rng);
         //let k = 3999;//meta.side_len().pow(meta.max_dim() as u32);
-        for i in 0..sim.data().len() {
-            let rand = rng.gen() & 1 == 0;
-            sim.data_mut()[i] = rand;
-        }
 
         let vertices = draw_surface4(meta, sim.data(), Matrix4::identity());
         let indices = linear_indices(&vertices);
 
         Ok(Self {
+            rng,
             voot: 0,
             meta,
             sim,
@@ -52,7 +59,7 @@ impl App for TriangleApp {
     }
 
     fn frame(&mut self, ctx: &mut Context, _: &mut Platform) -> Result<Vec<DrawCmd>> {
-        let a = ctx.start_time().elapsed().as_secs_f32() / 10.;
+        let a = ctx.start_time().elapsed().as_secs_f32() / 100.;
 
         //let matrix = Matrix4::new_rotation(Vector3::new(a, 0., 0.));
 
@@ -74,12 +81,19 @@ impl App for TriangleApp {
             0.,
             a.cos(),
         ]);
+        //let matrix = Matrix4::identity();
 
-        if self.voot % 1 == 0 {
+        if self.voot == 90 * 1 {
             self.sim.step();
+            self.voot = 0;
+        }
 
             let vertices = draw_surface4(self.meta, self.sim.data(), matrix);
             ctx.update_vertices(self.verts, &vertices)?;
+
+        //if self.voot == 90 * 60 {
+        if false {
+            random_data(&mut self.sim, &mut self.rng);
             self.voot = 0;
         }
 
@@ -136,8 +150,8 @@ impl<const N: usize> Simulation<N> {
             let sum: u8 = neighbors.iter().map(|&c| self.read[c] as u8).sum();
 
             self.write[coord] = match center {
-                true => matches!(sum, 2 | 3),
-                false => sum == 3,
+                true => matches!(sum, 4 | 6),
+                false => sum == 6,
             };
         });
 
