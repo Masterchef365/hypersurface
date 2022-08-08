@@ -1,5 +1,9 @@
-use hypersurface::{HyperSurfaceMeta, NeighborAccel};
-use idek::{nalgebra::{Matrix4, Vector4, Vector3}, prelude::*, IndexBuffer, MultiPlatformCamera};
+use hypersurface::{HyperCoord, HyperSurfaceMeta, NeighborAccel};
+use idek::{
+    nalgebra::{Matrix4, Vector3, Vector4},
+    prelude::*,
+    IndexBuffer, MultiPlatformCamera,
+};
 
 fn main() -> Result<()> {
     launch::<_, TriangleApp>(Settings::default().vr_if_any_args())
@@ -53,10 +57,22 @@ impl App for TriangleApp {
         //let matrix = Matrix4::new_rotation(Vector3::new(a, 0., 0.));
 
         let matrix = Matrix4::from_column_slice(&[
-            a.cos(), 0., 0., a.sin(), 
-            0., 1., 0., 0.,
-            0., 0., 1., 0.,
-            -a.sin(), 0., 0., a.cos(), 
+            a.cos(),
+            0.,
+            0.,
+            a.sin(),
+            0.,
+            1.,
+            0.,
+            0.,
+            0.,
+            0.,
+            1.,
+            0.,
+            -a.sin(),
+            0.,
+            0.,
+            a.cos(),
         ]);
 
         if self.voot % 1 == 0 {
@@ -133,11 +149,7 @@ impl<const N: usize> Simulation<N> {
 
 fn color_fn(v: bool, c: [f32; 4]) -> [f32; 3] {
     if v {
-        [
-            c[0] - c[3],
-            c[1] + c[3],
-            c[2] - c[3],
-        ]
+        [c[0] - c[3], c[1] + c[3], c[2] - c[3]]
     } else {
         [0.01; 3]
     }
@@ -146,29 +158,39 @@ fn color_fn(v: bool, c: [f32; 4]) -> [f32; 3] {
 fn draw_surface4(meta: HyperSurfaceMeta<4>, data: &[bool], matrix: Matrix4<f32>) -> Vec<Vertex> {
     let side_len = meta.side_len() as f32;
 
-    meta.all_coords()
+    let project = |point| {
+        let vect = Vector4::from(point);
+
+        let vect = matrix * vect;
+
+        let q = vect.w + 2.;
+        [vect.x * q, vect.y * q, vect.z * q]
+    };
+
+    let downscale = |v| 2. * v as f32 / side_len - 1.;
+
+    //let mut vertices: Vec<Vertex> = vec![];
+    let mut vertices: Vec<Vertex> = meta
+        .all_coords()
         .into_iter()
         .zip(data)
         .map(|(coord, val)| {
-            let point = meta
-                .coord_euclid(coord)
-                .map(|v| v as f32 / side_len);
+            let point = meta.coord_euclid(coord).map(downscale);
 
-            let vect = Vector4::from(point);
-            let vect = vect * 2. - Vector4::from([1.; 4]);
-
-            let vect = matrix * vect;
-
-            let q = vect.w + 2.;
-            let pos = [
-                vect.x * q,
-                vect.y * q,
-                vect.z * q,
-            ];
+            let pos = project(point);
 
             Vertex::new(pos, color_fn(*val, point))
         })
-        .collect()
+        .collect();
+
+    let line_meta = HyperSurfaceMeta::<4>::new(meta.side_len() - 2, 1);
+    vertices.extend(line_meta.all_coords().into_iter().map(|coord| {
+        let point = line_meta.coord_euclid(coord).map(downscale);
+        let pos = project(point.map(|p| p + 0.01));
+        Vertex::new(pos, [1.; 3])
+    }));
+
+    vertices
 }
 
 /*
