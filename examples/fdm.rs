@@ -142,16 +142,9 @@ fn draw_surface4(surface: &HyperSurface<4, f32>) -> Vec<Vertex> {
         let point = surface
             .meta()
             .coord_euclid(coord)
-            .map(|v| v as f32 / side_len)
-            .map(|v| v * 2. - 1.);
+            .map(|v| v as f32 / side_len);
 
-        let q = point[3] + 2.;
-
-        let pos = [
-            point[0] * q,
-            point[1] * q,
-            point[2] * q,
-        ];
+        let pos = project4(point);
 
         let val = surface[coord];
         Vertex::new(pos, color_fn(val))
@@ -163,6 +156,18 @@ fn draw_surface4(surface: &HyperSurface<4, f32>) -> Vec<Vertex> {
         .into_iter()
         .map(coord_to_vert)
         .collect()
+}
+
+fn project4(point: [f32; 4]) -> [f32; 3] {
+    let point = point.map(|v| v * 2. - 1.);
+
+    let q = point[3] + 2.;
+
+    [
+        point[0] * q,
+        point[1] * q,
+        point[2] * q,
+    ]
 }
 
 
