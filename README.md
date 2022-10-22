@@ -6,3 +6,8 @@ N-dimensional hypersurface of a M-dimensional hypercube.
 Demonstrating the realtime viability of this datastructure is a wave simulation using the 2D finite difference method on the surface of a 4D hypercube.
 The visualization looks something like this:
 ![4D FDM](images/fdm_4d.png)
+
+Run it for yourself:
+```sh
+cargo run --release --example fdm
+```
